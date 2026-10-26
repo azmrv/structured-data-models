@@ -455,9 +455,7 @@ def test_sort_native_fullgraph(
     )[1::2]
 
     def sort(inp: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        if inp.is_cuda:
-            return torch.sort(inp, descending=descending, stable=True)
-        return _sort_native(cast(StringTensor, inp), descending=descending)
+        return torch.sort(inp, descending=descending, stable=True)
 
     out, perm = torch.compile(sort, fullgraph=True)(tensor)
     expected = [5, 0, 1, 3, 4, 2] if descending else [4, 1, 3, 0, 5, 2]
