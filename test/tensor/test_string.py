@@ -385,6 +385,7 @@ def test_registers_as_a_pytorch_buffer() -> None:
     assert tuple(module.buffers()) == (tensor,)
 
 
+@pytest.mark.parametrize("native", [False, True])
 @pytest.mark.parametrize("descending", [False, True])
 @pytest.mark.parametrize(
     "values",
@@ -402,6 +403,7 @@ def test_registers_as_a_pytorch_buffer() -> None:
 def test_sort_stable(
     values: list[str | None],
     descending: bool,
+    native: bool,
     device: torch.device,
 ) -> None:
     # The sort indices are relative to the view, including a storage offset.
@@ -416,7 +418,12 @@ def test_sort_stable(
     )
     indices.extend(i for i, value in enumerate(values) if value is None)
 
-    out, perm = torch.sort(tensor, descending=descending, stable=True)
+    if native:
+        out, perm = _sort_native(
+            cast(StringTensor, tensor), descending=descending
+        )
+    else:
+        out, perm = torch.sort(tensor, descending=descending, stable=True)
     assert out.tolist() == [values[i] for i in indices]
     assert perm.tolist() == indices
     assert out.device == device
