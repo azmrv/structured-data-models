@@ -16,7 +16,9 @@ from typing_extensions import override
 
 from sdm._warnings import warn_once
 from sdm.tensor import VarLenTensor
+from sdm.tensor._string_keys import pack
 from sdm.tensor.io import arrow_as_tensor, combine_arrow_chunks
+from sdm.tensor.var_len import _select_entries
 
 if TYPE_CHECKING:
     import cudf
@@ -523,6 +525,10 @@ def _sort(
     if inp.dim() != 1:
         raise NotImplementedError("'sort' only supports one-dimensional input")
 
+    # Bound radix passes; longer strings retain the external sort.
+    if inp.is_cuda and inp._max_length <= 56:
+        return _sort_native(inp, descending=descending)
+
     backend: Literal["arrow", "cudf"] = "arrow"
     if inp.is_cuda:
         if importlib.util.find_spec("cudf") is not None:
@@ -553,3 +559,27 @@ def _sort(
             perm = torch.from_dlpack(perm_ser.astype("int64").to_cupy())
 
     return cast(StringTensor, inp[perm]), perm
+
+
+def _sort_native(
+    inp: StringTensor,
+    *,
+    descending: bool,
+) -> tuple[StringTensor, Tensor]:
+    words, valid = pack(inp)
+    if inp._valid is not None:
+        # Nulls sort last in both directions, including stable duplicate nulls.
+        sentinel = -1 if descending else torch.iinfo(torch.int64).max
+        words = torch.where(valid[:, None], words, sentinel)
+
+    # Least-significant word first preserves lexicographic ordering and ties.
+    perm = words[:, -1].argsort(descending=descending, stable=True)
+    for column in range(words.size(1) - 2, -1, -1):
+        order = words[perm, column].argsort(
+            descending=descending,
+            stable=True,
+        )
+        perm = perm[order]
+
+    out = _select_entries(inp, perm)
+    return cast(StringTensor, out), perm
