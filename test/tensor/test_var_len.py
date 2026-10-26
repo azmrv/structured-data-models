@@ -1071,12 +1071,31 @@ def test_native_string_selection(
     assert actual.data_offset[1].diff().equal(expected.data_offset[1].diff())
 
 
-def test_native_string_selection_fullgraph() -> None:
+def test_native_string_selection_fullgraph(compilation: None) -> None:
     values = StringTensor.from_arrow(pa.array(["é🙂", None, "", "long尾"]))
     index = torch.tensor([3, 0, 3, 1, 2])
     compiled = torch.compile(_select_entries, fullgraph=True)
     actual = compiled(values, index)
     assert actual.tolist() == values[index].tolist()
+
+
+def test_native_string_selection_meta() -> None:
+    values = StringTensor(
+        data=torch.empty(12, dtype=torch.uint8, device="meta"),
+        offset=torch.empty(4, dtype=torch.int32, device="meta"),
+        valid=torch.empty(3, dtype=torch.bool, device="meta"),
+        size=(3,),
+    )
+    index = torch.empty(4, dtype=torch.int64, device="meta")
+    actual = _select_entries(values, index)
+    assert actual.shape == index.shape
+    assert actual.dtype == torch.uint8
+    assert actual.device == index.device
+    assert actual._offset.shape == (index.numel() + 1,)
+    assert actual._offset.dtype == torch.int32
+    assert actual._data.numel() == index.numel() * 12
+    assert actual.valid is not None
+    assert actual.valid.shape == index.shape
 
 
 @pytest.mark.parametrize("empty", [False, True])
