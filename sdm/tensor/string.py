@@ -525,9 +525,10 @@ def _sort(
     if inp.dim() != 1:
         raise NotImplementedError("'sort' only supports one-dimensional input")
 
-    # Bound radix passes; longer strings retain the external sort.
-    native = inp.is_cuda or (inp.is_cpu and torch.compiler.is_compiling())
-    if native and inp._max_length <= 56:
+    # Bound radix passes to 12 words on CUDA and eight on CPU.
+    cuda = inp.is_cuda
+    native = cuda or (inp.is_cpu and torch.compiler.is_compiling())
+    if native and inp._max_length <= (84 if cuda else 56):
         return _sort_native(inp, descending=descending)
 
     backend: Literal["arrow", "cudf"] = "arrow"

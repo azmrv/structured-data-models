@@ -397,6 +397,10 @@ def test_registers_as_a_pytorch_buffer() -> None:
         ["a" * 7 + "b", "a" * 8, "a" * 7, "a" * 14, None],
         ["a" * 55 + "b", "a" * 56, "a" * 55, "a" * 56, None],
         ["a" * 57 + "z", "a" * 58, "a" * 57, "a" * 58, None, None],
+        ["é" * 37 + "b", "é" * 37 + "a", "é" * 37, None],
+        ["a" * 83 + "b", "a" * 84, "a" * 83, "a" * 84, None],
+        ["é" * 42, "é" * 41 + "e", "é" * 41, None],
+        ["a" * 84 + "b", "a" * 85, "a" * 84, "a" * 85, None],
     ],
 )
 @withCUDA
@@ -461,6 +465,26 @@ def test_sort_native_fullgraph(
     expected = [5, 0, 1, 3, 4, 2] if descending else [4, 1, 3, 0, 5, 2]
     assert perm.tolist() == expected
     values = tensor.tolist()
+    assert out.tolist() == [values[i] for i in expected]
+
+
+@pytest.mark.parametrize("width", [75, 84])
+@pytest.mark.parametrize("descending", [False, True])
+@onlyCUDA
+def test_sort_wide_fullgraph(
+    compilation: None,
+    width: int,
+    descending: bool,
+) -> None:
+    values = ["a" * (width - 1) + "b", "a" * width, "a" * width, None, ""]
+    tensor = StringTensor.from_list(values, device="cuda")
+
+    def sort(inp: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        return torch.sort(inp, descending=descending, stable=True)
+
+    out, perm = torch.compile(sort, fullgraph=True)(tensor)
+    expected = [0, 1, 2, 4, 3] if descending else [4, 1, 2, 0, 3]
+    assert perm.tolist() == expected
     assert out.tolist() == [values[i] for i in expected]
 
 
